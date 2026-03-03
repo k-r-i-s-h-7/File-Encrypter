@@ -1,80 +1,65 @@
-pipeline {
-    agent any
-
-    stages {
+node {
+    try {
 
         stage('Build') {
-            steps {
-                sh '''
-                    echo "Building Java project..."
-                    echo "Listing workspace contents:"
-                    ls
+            sh '''
+                echo "Building Java project..."
+                echo "Listing workspace contents:"
+                ls
 
-                    cd "Password Protection"
-                    mkdir -p build
-                    javac -d build src/*.java
+                cd "Password Protection"
+                mkdir -p build
+                javac -d build src/*.java
 
-                    echo "Build successful"
-                '''
-            }
+                echo "Build successful"
+            '''
         }
 
         stage('Test') {
-    steps {
-        sh '''
-            echo "Running JUnit tests for File-Encrypter..."
+            sh '''
+                echo "Running JUnit tests for File-Encrypter..."
 
-            cd "Password Protection"
+                cd "Password Protection"
 
-            # Always remove old JUnit jar to avoid corruption
-            rm -f junit-platform-console-standalone.jar
+                # Download JUnit jar if not already present
+                if [ ! -f junit-platform-console-standalone.jar ]; then
+                    echo "Downloading JUnit..."
+                    curl -L -o junit-platform-console-standalone.jar \
+                    https://repo1.maven.org/maven2/org/junit/platform/junit-platform-console-standalone/1.10.0/junit-platform-console-standalone-1.10.0.jar
+                fi
 
-            echo "Downloading JUnit..."
-            curl -f -L -o junit-platform-console-standalone.jar \
-            https://repo1.maven.org/maven2/org/junit/platform/junit-platform-console-standalone/1.10.0/junit-platform-console-standalone-1.10.0.jar
+                # Compile test files (test folder beside src)
+                mkdir -p test-build
+                javac -cp junit-platform-console-standalone.jar:build \
+                    -d test-build \
+                    test/*.java
 
-            # Verify download
-            if [ ! -s junit-platform-console-standalone.jar ]; then
-                echo "JUnit jar download failed!"
-                exit 1
-            fi
+                # Run JUnit tests
+                java -jar junit-platform-console-standalone.jar \
+                    --class-path build:test-build \
+                    --scan-class-path
 
-            mkdir -p test-build
-            javac -cp junit-platform-console-standalone.jar:build \
-                -d test-build \
-                test/*.java
-
-            java -jar junit-platform-console-standalone.jar \
-                --class-path build:test-build \
-                --scan-class-path
-
-            echo "JUnit tests executed successfully"
-        '''
-    }
-}
+                echo "JUnit tests executed successfully"
+            '''
+        }
 
         stage('Deploy') {
-            steps {
-                sh '''
-                    echo "Deploying (Packaging) File-Encrypter Application..."
+            sh '''
+                echo "Deploying (Packaging) File-Encrypter Application..."
 
-                    cd "Password Protection"
+                cd "Password Protection"
 
-                    # Create executable artifact (JAR)
-                    jar cf FileEncrypter.jar -C build .
+                # Create executable artifact (JAR)
+                jar cf FileEncrypter.jar -C build .
 
-                    echo "Deployment successful - Artifact ready"
-                '''
-            }
+                echo "Deployment successful - Artifact ready"
+            '''
         }
-    }
 
-    post {
-        success {
-            echo "Pipeline executed successfully!"
-        }
-        failure {
-            echo "Pipeline failed!"
-        }
+        echo "Pipeline executed successfully!"
+
+    } catch (Exception e) {
+        echo "Pipeline failed!"
+        throw e
     }
 }
